@@ -28,15 +28,15 @@
 #include <WebServer.h>
 #include <Update.h>
 #define LED_DATA_PIN 19                 // Pin connected to LED strip DIN (Different for ESP32 vs. ESP8266)
-#define ESP32_RX_PIN 16                 // To TF-Mini TX
-#define ESP32_TX_PIN 17                 // To TF-Mini RX 
+#define ESP32_RX_PIN D2                 // To TF-Mini (OR HC-SR04) TX
+#define ESP32_TX_PIN D1                 // To TF-Mini (OR HC-SR04) RX 
 #elif defined(ESP8266)
 #define VERSION "v0.51 (ESP8266)"
 #include <ESP8266WiFi.h>                //Arudino ESP8266 Core - standard wifi connnectivity
 #include <ESP8266WebServer.h>           //Arduino ESP8266 Core - Provides web server functionalities (handles HTTP requests - also needed for OTA updates)
 #include <WiFiUdp.h>                    //Arduino ESP core - provides UDP
 #include <ESP8266HTTPUpdateServer.h>    //Arudino ESP8266 Core - needed for OTA Updates
-#define LED_DATA_PIN 12                 //Pin connected to LED strip DIN (ESP8266 only)
+#define LED_DATA_PIN D5                 //Pin connected to LED strip DIN (ESP8266 only)
 #endif
 
 #ifdef ESP32
@@ -1744,6 +1744,8 @@ bool reconnect_soft() {
        return false;
     }
   }
+
+  return false;
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
