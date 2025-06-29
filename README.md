@@ -4,7 +4,7 @@
 
 ## ESP Parking Assistant (Forked)
 
-This is a customized fork of the [ESP-Parking-Assistant](https://github.com/Resinchem/ESP-Parking-Assistant) project. The original project provides a visual parking aid using an ultrasonic distance sensor.
+This is a customized fork of the [ESP-Parking-Assistant](https://github.com/Resinchem/ESP-Parking-Assistant) project. The original project provides a visual parking aid using LED strip and distance sensors.
 
 ### Changes in This Fork:
 - Replaced TFmini-s Micro Lidar sensor with **HC-SR04 ultrasonic sensor** for distance measurement.
