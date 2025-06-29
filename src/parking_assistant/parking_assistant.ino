@@ -12,7 +12,7 @@
 
 #include <Wire.h>
 #include <LittleFS.h>
-#include <TFMPlus.h>                    //https://github.com/budryerson/TFMini-Plus (v1.5.0)
+#include <Ultrasonic.h>
 #include <WiFiClient.h>                 //Arduino ESP Core - creates a client that can connect to an IP address
 #include <PubSubClient.h>               //https://github.com/knolleary/pubsubclient  Provides MQTT functions (v2.8)
 #include <ArduinoOTA.h>                 //https://github.com/jandrassy/ArduinoOTA (v1.1.0)
@@ -27,9 +27,7 @@
 #include <ESPmDNS.h>
 #include <WebServer.h>
 #include <Update.h>
-#define LED_DATA_PIN 19                 // Pin connected to LED strip DIN (Different for ESP32 vs. ESP8266)
-#define ESP32_RX_PIN D2                 // To TF-Mini (OR HC-SR04) TX
-#define ESP32_TX_PIN D1                 // To TF-Mini (OR HC-SR04) RX 
+#define LED_DATA_PIN 23                 // Pin connected to LED strip DIN (Different for ESP32 vs. ESP8266)
 #elif defined(ESP8266)
 #define VERSION "v0.51 (ESP8266)"
 #include <ESP8266WiFi.h>                //Arudino ESP8266 Core - standard wifi connnectivity
@@ -55,6 +53,9 @@
 #define MILLI_AMPS 5000;                    // Default - will be defined during onboarding
 #define FORMAT_LITTLEFS_IF_FAILED true      // DO NOT CHANGE!!!
 #define ONBOARD_LED 2                       // Only change if your board's onboard LED has a different GPIO
+#define ULTRASONIC_RX_PIN 19                 // To  HC-SR04 TX
+#define ULTRASONIC_TX_PIN 18                 // To HC-SR04 RX 
+#define MAX_DISTANCE_CM 384
 // Arduino IDE OTA Updates
 bool ota_flag = true;                       // Must leave this as true for board to broadcast port to IDE upon boot
 uint16_t ota_boot_time_window = 2500;       // minimum time on boot for IP address to show in IDE ports, in millisecs
@@ -167,7 +168,7 @@ String WebColors[10];
 
 //OTHER GLOBAL VARIABLES
 bool onboarding = false;        //Will be set to true if no config file or wifi cannot be joined
-bool tfMiniEnabled = false;
+bool ultrasonicEnabled = false;
 bool blinkOn = false;
 bool blinkSideOn = false;
 int intervalDistance = 0;
@@ -200,7 +201,7 @@ WiFiClient espClient;
   PubSubClient client(espClient);
 #endif
 
-TFMPlus tfmini;
+Ultrasonic ultrasonic(ULTRASONIC_TX_PIN, ULTRASONIC_RX_PIN);
 CRGB LEDs[NUM_LEDS_MAX];  
 
 //---- Captive Portal -------
@@ -579,7 +580,7 @@ void handleRoot() {
         </table><br>\
         <b><u>Parking Distances</u></b>:<br>\
         These values, in inches, specify when the LED strip wakes (Wake distance), when the countdown starts (Active distance), when the car is in the desired parked position (Parked distance) or when it has pulled too far forward and should back up (Backup distance).<br><br>\
-        If using inches, you may enter decimal values (e.g. 27.5\") and these will be converted to millimeters in the code.  Values should decrease from Wake through Backup... maximum value is 192 inches (4980 mm) and minimum value is 12 inches (305 mm).<br><br>\
+        If using inches, you may enter decimal values (e.g. 27.5\") and these will be converted to millimeters in the code.  Values should decrease from Wake through Backup... maximum value is 192 inches (4980 mm) and minimum value is 4 inches (101 mm).<br><br>\
         <table>\
         <tr>\
         <td>Show distances in:</td>\
@@ -602,11 +603,11 @@ void handleRoot() {
         <td><label for=\"wakedistance\">Wake Distance:</label></td>";
 
     if (uomDistance) {
-      mainPage += "<td><input type=\"number\" min=\"305\" max=\"4980\" step=\"1\" name=\"wakedistance\" value=\"";   
+      mainPage += "<td><input type=\"number\" min=\"101\" max=\"4980\" step=\"1\" name=\"wakedistance\" value=\"";   
       mainPage += String(intWakeDistance); 
       mainPage += "\"> mm</td>";
     } else {
-      mainPage += "<td><input type=\"number\" min=\"12\" max=\"192\" step=\"0.1\" name=\"wakedistance\" value=\"";
+      mainPage += "<td><input type=\"number\" min=\"4\" max=\"192\" step=\"0.1\" name=\"wakedistance\" value=\"";
       mainPage += String(intWakeDistance); 
       mainPage += "\"> inches</td>";
     }
@@ -615,11 +616,11 @@ void handleRoot() {
         <tr>\
         <td><label for=\"activedistance\">Active Distance:</label></td>";
     if (uomDistance) {
-      mainPage += "<td><input type=\"number\" min=\"305\" max=\"4980\" step=\"1\" name=\"activedistance\" value=\"";
+      mainPage += "<td><input type=\"number\" min=\"101\" max=\"4980\" step=\"1\" name=\"activedistance\" value=\"";
       mainPage += String(intStartDistance);     
       mainPage += "\"> mm</td>";
     } else {
-      mainPage += "<td><input type=\"number\" min=\"12\" max=\"192\" step=\"0.1\" name=\"activedistance\" value=\"";
+      mainPage += "<td><input type=\"number\" min=\"4\" max=\"192\" step=\"0.1\" name=\"activedistance\" value=\"";
       mainPage += String(intStartDistance);     
       mainPage += "\"> inches</td>";
     }
@@ -628,11 +629,11 @@ void handleRoot() {
         <tr>\
         <td><label for=\"parkeddistance\">Parked Distance:</label></td>";
     if (uomDistance) {
-      mainPage += "<td><input type=\"number\" min=\"305\" max=\"4980\" step=\"1\" name=\"parkeddistance\" value=\"";
+      mainPage += "<td><input type=\"number\" min=\"101\" max=\"4980\" step=\"1\" name=\"parkeddistance\" value=\"";
       mainPage += String(intParkDistance);
       mainPage += "\"> mm</td>";
     } else {
-      mainPage += "<td><input type=\"number\" min=\"12\" max=\"192\" step=\"0.1\" name=\"parkeddistance\" value=\"";
+      mainPage += "<td><input type=\"number\" min=\"4\" max=\"192\" step=\"0.1\" name=\"parkeddistance\" value=\"";
       mainPage += String(intParkDistance);
       mainPage += "\"> inches</td>";
     }
@@ -641,11 +642,11 @@ void handleRoot() {
         <tr>\
         <td><label for=\"backupistance\">Backup Distance:</label></td>";
     if (uomDistance) {
-      mainPage += "<td><input type=\"number\" min=\"305\" max=\"4980\" step=\"1\" name=\"backupdistance\" value=\"";
+      mainPage += "<td><input type=\"number\" min=\"101\" max=\"4980\" step=\"1\" name=\"backupdistance\" value=\"";
       mainPage += String(intBackupDistance);
       mainPage += "\"> mm</td>";
     } else {
-      mainPage += "<td><input type=\"number\" min=\"12\" max=\"192\" step=\"0.1\" name=\"backupdistance\" value=\"";
+      mainPage += "<td><input type=\"number\" min=\"4\" max=\"192\" step=\"0.1\" name=\"backupdistance\" value=\"";
       mainPage += String(intBackupDistance);
       mainPage += "\"> inches</td>";
     }
@@ -975,13 +976,13 @@ void handleForm() {
        }
     }
     //Validate all distances in valid range after conversion
-    if (wakeDistance < 305) wakeDistance = 305;
+    if (wakeDistance < 101) wakeDistance = 101;
     if (wakeDistance > 4980) wakeDistance = 4980;
-    if (startDistance < 305) startDistance =305;
+    if (startDistance < 101) startDistance =101;
     if (startDistance > 4980) startDistance = 4980;
-    if (parkDistance < 305) parkDistance = 305;
+    if (parkDistance < 101) parkDistance = 101;
     if (parkDistance > 4980) parkDistance = 4980;
-    if (backupDistance < 305) backupDistance = 305;
+    if (backupDistance < 101) backupDistance = 101;
     if (backupDistance > 4980) backupDistance = 4980;
     if ((useSideSensor) && (leftDistance > 0)) {
       if (leftDistance < 50) leftDistance = 50;
@@ -994,7 +995,7 @@ void handleForm() {
 
     //To avoid issues, assure increasing distances
     if ((backupDistance >= parkDistance) || (parkDistance >= startDistance) || (startDistance >= wakeDistance)) {
-       backupDistance = 305;
+       backupDistance = 101;
        parkDistance = 600;
        startDistance = 1800;
        wakeDistance = 3000;
@@ -1215,6 +1216,7 @@ void handleOnboard() {
 #endif
   WiFi.mode(WIFI_STA);
   WiFi.hostname(wifiHostName);
+  //WiFi.persistent(true);
   WiFi.begin(wifiSSID, wifiPW);
 #if defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
   Serial.print("SSID:");
@@ -1836,7 +1838,6 @@ void setup() {
   // Serial monitor
   #ifdef ESP32
     Serial.begin(115200);
-    Serial2.begin(115200, SERIAL_8N1, ESP32_RX_PIN, ESP32_TX_PIN);
   #elif defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 1)
     Serial.begin(115200);
     Serial.println("Booting...");
@@ -1911,20 +1912,13 @@ void setup() {
     FastLED.setBrightness(activeBrightness);
 
     // --------------
-    // SETUP TFMINI
+    // SETUP Ultrasonic Sensor
     // --------------
-    // TFMini uses Serial pins, so SERIAL_DEBUB must be 0 for ESP8266 - otherwise only zero distance will be reported
-    // ESP32 uses Serial2, so normal serial output via monitor is possible
-    #ifdef ESP32
-      tfmini.begin(&Serial2);
-      tfMiniEnabled = true;
-    #elif defined(SERIAL_DEBUG) && (SERIAL_DEBUG == 0)
-      Serial.begin(115200);
-      delay(20);
-      tfmini.begin(&Serial);
-      tfMiniEnabled = true;
-    #endif
+    unsigned int testDistSensor = ultrasonic.read();
 
+    if (testDistSensor) {
+      ultrasonicEnabled = true;
+    }
     // ---------------------------------------------------
     // Setup Side Sensor VL53L0X (only available on ESP32)
     // ---------------------------------------------------
@@ -1986,19 +1980,21 @@ void loop() {
     
   }
   uint32_t currentMillis = millis();
-  int16_t tf_dist = 0;
-  int16_t distance = 0;
-  int16_t vl_side_dist = 0;
+  uint16_t tf_dist = 0;
+  uint16_t distance = 0;
+  uint16_t vl_side_dist = 0;
 
-  //Attempt to get reading from TFMini
-  if (tfMiniEnabled) {
-    if (tfmini.getData(distance)) {
+  //Attempt to get reading from Ultrasonic sensorf
+  if (ultrasonicEnabled) {
+    distance = ultrasonic.read(); // distance in cm
+
+    if (distance && distance <= MAX_DISTANCE_CM) {
       tf_dist = distance * 10;
     } else {
       tf_dist = 8888;  //Default value if reading unsuccessful
     }
   } else {
-    tf_dist = 9999;  //Default value if TFMini not enabled (serial connection failed)
+    tf_dist = 9999;  //Default value if ultrasonic not enabled (connection failed)
   }
 
   #if defined(ESP32)
